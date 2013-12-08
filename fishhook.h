@@ -28,8 +28,10 @@
  * name to its replacement
  */
 struct rebinding {
-  char *name;
+  const char *name;
   void *replacement;
+  const char *module_name;
+  void **original_function_ptr;
 };
 
 /*

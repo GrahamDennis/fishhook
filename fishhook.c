@@ -74,7 +74,8 @@ static void perform_rebinding_with_section(section_t *section,
                                            intptr_t slide,
                                            nlist_t *symtab,
                                            char *strtab,
-                                           uint32_t *indirect_symtab) {
+                                           uint32_t *indirect_symtab,
+                                           Dl_info *info) {
   uint32_t *indirect_symbol_indices = indirect_symtab + section->reserved1;
   void **indirect_symbol_bindings = (void **)((uintptr_t)slide + section->addr);
   for (uint i = 0; i < section->size / sizeof(void *); i++) {
@@ -90,6 +91,15 @@ static void perform_rebinding_with_section(section_t *section,
       for (uint j = 0; j < cur->rebindings_nel; j++) {
         if (strlen(symbol_name) > 1 &&
             strcmp(&symbol_name[1], cur->rebindings[j].name) == 0) {
+          if (cur->rebindings[j].original_function_ptr &&
+              cur->rebindings[j].module_name &&
+              strcmp(cur->rebindings[j].module_name, info->dli_fname) == 0) {
+              // We know this module has the symbol fully resolved because it has been called.
+              // So save the fully resolved value of the pointer
+              *cur->rebindings[j].original_function_ptr = indirect_symbol_bindings[i];
+              // And make sure we don't overwrite it again.
+              cur->rebindings[j].original_function_ptr = NULL;
+          }
           indirect_symbol_bindings[i] = cur->rebindings[j].replacement;
           goto symbol_loop;
         }
@@ -150,10 +160,10 @@ static void rebind_symbols_for_image(const struct mach_header *header,
   // Get indirect symbol table (array of uint32_t indices into symbol table)
   uint32_t *indirect_symtab = (uint32_t *)(linkedit_base + dysymtab_cmd->indirectsymoff);
   if (lazy_symbols) {
-    perform_rebinding_with_section(lazy_symbols, slide, symtab, strtab, indirect_symtab);
+    perform_rebinding_with_section(lazy_symbols, slide, symtab, strtab, indirect_symtab, &info);
   }
   if (non_lazy_symbols) {
-    perform_rebinding_with_section(non_lazy_symbols, slide, symtab, strtab, indirect_symtab);
+    perform_rebinding_with_section(non_lazy_symbols, slide, symtab, strtab, indirect_symtab, &info);
   }
 }
 
